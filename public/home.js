@@ -1,84 +1,194 @@
 
-const $ = s => document.querySelector(s);
+const $ = (selector) => document.querySelector(selector);
 
-let mode = 'register';
+let mode = "register";
+let isSubmitting = false;
 
+// Open signup/login popup
 function authOpen() {
-    $('#authModal').classList.remove('hidden');
-    setMode(mode);
+    const modal = $("#authModal");
+
+    if (!modal) return;
+
+    modal.classList.remove("hidden");
+    setMode("register");
 }
 
-['#heroCreate', '#navCreate', '#bottomCreate'].forEach(s => {
-    const el = $(s);
-    if (el) el.onclick = authOpen;
-});
+// Close popup
+const closeButton = $("#closeAuth");
 
-$('#closeAuth').onclick = () => {
-    $('#authModal').classList.add('hidden');
-};
-
-function setMode(m) {
-    mode = m;
-
-    const nameInput = $('#authForm').querySelector('[name="name"]');
-
-    // IMPORTANT: Login ke time hidden name field validation band
-    if (nameInput) {
-        nameInput.required = (m === 'register');
-        nameInput.disabled = (m === 'login');
-    }
-
-    $('#authTitle').textContent =
-        m === 'register' ? 'Create your account' : 'Welcome back';
-
-    $('#nameWrap').classList.toggle('hidden', m === 'login');
-
-    $('#authSubmit').textContent =
-        m === 'register' ? 'Create account' : 'Sign in';
-
-    $('#authError').textContent = '';
-
-    $('#authSwitch').innerHTML =
-        m === 'register'
-            ? 'Already have an account? <button type="button" class="textbtn" id="switchAuth">Sign in</button>'
-            : 'New to NJ Wedding Studio? <button type="button" class="textbtn" id="switchAuth">Create account</button>';
-
-    $('#switchAuth').onclick = () => {
-        setMode(mode === 'register' ? 'login' : 'register');
+if (closeButton) {
+    closeButton.onclick = () => {
+        $("#authModal").classList.add("hidden");
     };
 }
 
-$('#authForm').onsubmit = async e => {
-    e.preventDefault();
+// Open popup from website buttons
+["#heroCreate", "#navCreate", "#bottomCreate"].forEach(selector => {
+    const button = $(selector);
 
-    const body = Object.fromEntries(new FormData(e.target));
+    if (button) {
+        button.onclick = authOpen;
+    }
+});
 
-    $('#authSubmit').disabled = true;
-    $('#authError').textContent = '';
+// Switch between signup and login
+function setMode(newMode) {
+    mode = newMode;
 
-    try {
-        const r = await fetch('/api/' + mode, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
+    const form = $("#authForm");
+    const nameWrap = $("#nameWrap");
+    const nameInput = form?.querySelector('[name="name"]');
+    const title = $("#authTitle");
+    const submitButton = $("#authSubmit");
+    const switchArea = $("#authSwitch");
+    const errorArea = $("#authError");
 
-        const j = await r.json();
+    if (!form || !title || !submitButton || !switchArea) {
+        console.error("Auth form HTML elements are missing.");
+        return;
+    }
 
-        if (!r.ok) {
-            throw new Error(j.error || 'Something went wrong.');
+    // Name field validation
+    if (nameInput) {
+        nameInput.required = mode === "register";
+        nameInput.disabled = mode === "login";
+    }
+
+    // Show/hide name field
+    if (nameWrap) {
+        nameWrap.classList.toggle("hidden", mode === "login");
+    }
+
+    // Update title
+    title.textContent =
+        mode === "register"
+            ? "Create your account"
+            : "Welcome back";
+
+    // Update submit button
+    submitButton.textContent =
+        mode === "register"
+            ? "Create account"
+            : "Sign in";
+
+    submitButton.disabled = false;
+
+    // Clear previous errors
+    if (errorArea) {
+        errorArea.textContent = "";
+    }
+
+    // Update switch link
+    switchArea.innerHTML =
+        mode === "register"
+            ? 'Already have an account? <button type="button" class="textbtn" id="switchAuth">Sign in</button>'
+            : 'New to NJ Wedding Studio? <button type="button" class="textbtn" id="switchAuth">Create account</button>';
+
+    // Attach click event after creating button
+    const switchButton = $("#switchAuth");
+
+    if (switchButton) {
+        switchButton.onclick = () => {
+            setMode(mode === "register" ? "login" : "register");
+        };
+    }
+}
+
+// Signup and Login form submission
+const authForm = $("#authForm");
+
+if (authForm) {
+    authForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (isSubmitting) return;
+
+        const errorArea = $("#authError");
+        const submitButton = $("#authSubmit");
+
+        if (errorArea) {
+            errorArea.textContent = "";
         }
 
-        location.href = '/dashboard.html';
+        // Collect form data
+        const formData = new FormData(authForm);
+        const body = Object.fromEntries(formData.entries());
 
-    } catch (err) {
-        $('#authError').textContent = err.message;
-    } finally {
-        $('#authSubmit').disabled = false;
-    }
-};
+        // Remove name from login request
+        if (mode === "login") {
+            delete body.name;
+        }
 
-// Initial form setup
-setMode('register');
+        // Check required fields
+        if (!body.email || !body.password) {
+            if (errorArea) {
+                errorArea.textContent = "Please enter your email and password.";
+            }
+            return;
+        }
+
+        // Signup requires name
+        if (mode === "register" && !body.name?.trim()) {
+            if (errorArea) {
+                errorArea.textContent = "Please enter your name.";
+            }
+            return;
+        }
+
+        isSubmitting = true;
+
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent =
+                mode === "register" ? "Creating account..." : "Signing in...";
+        }
+
+        try {
+            const endpoint =
+                mode === "register"
+                    ? "/api/register"
+                    : "/api/login";
+
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify(body)
+            });
+
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(
+                    result.error || "Unable to continue. Please try again."
+                );
+            }
+
+            // Successful signup/login
+            window.location.href = "/dashboard.html";
+
+        } catch (error) {
+            console.error("Authentication error:", error);
+
+            if (errorArea) {
+                errorArea.textContent =
+                    error.message || "Something went wrong. Please try again.";
+            }
+
+        } finally {
+            isSubmitting = false;
+
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent =
+                    mode === "register" ? "Create account" : "Sign in";
+            }
+        }
+    });
+}
+
+// Initial setup
+setMode("register");
